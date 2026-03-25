@@ -324,7 +324,7 @@ int main()
             }
         }
         fin.close();
-        datasetName="file";
+        datasetName="data-set-results";
     }
     else if(sursa==2)
     {

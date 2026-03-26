@@ -12,6 +12,11 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <psapi.h>
 using namespace std;
 void bubbleSort(vector<int>&v);
 void selectionSort(vector<int>&v);
@@ -28,9 +33,11 @@ void generateReverseArray(vector<int>&v,int n);
 void generateAlmostSortedArray(vector<int>&v,int n);
 void generateFewUniqueArray(vector<int>&v,int n);
 string getCurrentTime();
+size_t getCurrentRAM();
 struct Result {
     string name;
     long long ms;
+    size_t memory_bytes;
 };
 mutex mtx; vector<Result> results;
 string formatDuration(long long ms) {
@@ -60,6 +67,12 @@ string getCurrentTime()
 
     return ss.str();
 }
+size_t getCurrentRAM()
+{
+    PROCESS_MEMORY_COUNTERS pmc;
+    GetProcessMemoryInfo(GetCurrentProcess(),&pmc,sizeof(pmc));
+    return pmc.WorkingSetSize;
+}
 void monitor(string name, function<void()> func) 
 {
     atomic<bool> ver(false);
@@ -77,16 +90,21 @@ void monitor(string name, function<void()> func)
         lock_guard<mutex> lock(mtx);
         cout<<"[Started] "<<name<<" at ["<<getCurrentTime()<<"]\n";
     }
+    size_t mem_before=getCurrentRAM();
     auto start=chrono::high_resolution_clock::now();
     func();
+    auto end=chrono::high_resolution_clock::now();
+    size_t mem_after=getCurrentRAM();
+    size_t mem_used=0;
+    if(mem_after>mem_before)
+        mem_used=mem_after-mem_before;
     ver=true;
     monitorThread.join();
-    auto end=chrono::high_resolution_clock::now();
     auto duration=chrono::duration_cast<chrono::milliseconds>(end - start);
     {
         lock_guard<mutex> lock(mtx);
-        results.push_back({name, duration.count()});
-        cout<<"[Finished] "<<name<<" at ["<<getCurrentTime()<<"] took "<<formatDuration(duration.count())<<"\n";
+        results.push_back({name,duration.count(),mem_used});
+        cout<<"[Finished] "<<name<<" at ["<<getCurrentTime()<<"] took "<<formatDuration(duration.count())<<" | RAM +"<<mem_used/1024<<" KB\n";
     }
 }
 void selectionSort(vector<int>&v) 
@@ -413,14 +431,18 @@ int main()
     {
          cout<<"\nFastest algorithm: "<<results[0].name<<" ("<<formatDuration(results[0].ms)<<")\n";
     }
-        string filename="results_"+datasetName+".csv";
+        string filename="results_"+datasetName+"_n"+to_string(v.size())+".csv";
         ofstream fout(filename);
-    fout<<"Algoritm,Timp(ms),Durata\n";
+        fout<<"Algorithm,Time_ms,Readable_time,RAM_bytes,RAM_KB,RAM_MB\n";
     for(const auto& res : results)
     {
          fout<<res.name<< ","
          <<res.ms<<","
-         <<formatDuration(res.ms)<<"\n";
+            <<formatDuration(res.ms)<<"," 
+            <<res.memory_bytes<<"," 
+            <<res.memory_bytes/1024<<"," 
+            <<res.memory_bytes/(1024*1024)
+            <<"\n";
     }
     fout.close();
         cout<<"\nDataset type: "<<datasetName<<"\n";

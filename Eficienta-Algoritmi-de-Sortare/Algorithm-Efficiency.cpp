@@ -37,7 +37,8 @@ string getFilenameTimestamp();
 size_t getCurrentRAM();
 struct Result {
     string name;
-    long long ms;
+    long long time_ns;
+    long long time_ms;
     size_t memory_bytes;
 };
 mutex mtx; vector<Result> results;
@@ -53,6 +54,19 @@ string formatDuration(long long ms) {
     if (minutes > 0) ss << minutes << "m ";
     if (seconds > 0) ss << seconds << "s ";
     if (milliseconds > 0 || (hours == 0 && minutes == 0 && seconds == 0)) ss << milliseconds << "ms";
+    return ss.str();
+}
+string formatPrecise(long long ns)
+{
+    stringstream ss;
+    if(ns < 1000)
+        ss << ns << " ns";
+    else if(ns < 1000000)
+        ss << fixed << setprecision(3) << ns/1000.0 << " us";
+    else if(ns < 1000000000)
+        ss << fixed << setprecision(3) << ns/1000000.0 << " ms";
+    else
+        ss << fixed << setprecision(3) << ns/1000000000.0 << " s";
     return ss.str();
 }
 string getCurrentTime()
@@ -113,11 +127,13 @@ void monitor(string name, function<void()> func)
         mem_used=mem_after-mem_before;
     ver=true;
     monitorThread.join();
-    auto duration=chrono::duration_cast<chrono::milliseconds>(end - start);
+    auto duration_ns=chrono::duration_cast<chrono::nanoseconds>(end - start);
+    long long ns = duration_ns.count();
+    long long ms = ns / 1000000;
     {
         lock_guard<mutex> lock(mtx);
-        results.push_back({name,duration.count(),mem_used});
-        cout<<"[Finished] "<<name<<" at ["<<getCurrentTime()<<"] took "<<formatDuration(duration.count())<<" | RAM +"<<mem_used/1024<<" KB\n";
+        results.push_back({name, ns, ms, mem_used});
+        cout<<"[Finished] "<<name<<" at ["<<getCurrentTime()<<"] took "<<formatPrecise(ns)<<" | RAM +"<<mem_used/1024<<" KB\n";
     }
 }
 void selectionSort(vector<int>&v) 
@@ -445,28 +461,29 @@ int main()
     t6.join();
     sort(results.begin(), results.end(), [](const Result& a, const Result& b)
     {
-      return a.ms<b.ms;
+      return a.time_ns<b.time_ns;
     });
     if (!results.empty()) 
     {
-         cout<<"\nFastest algorithm: "<<results[0].name<<" ("<<formatDuration(results[0].ms)<<")\n";
+         cout<<"\nCel mai rapid algoritm: "<<results[0].name<<" ("<<formatPrecise(results[0].time_ns)<<")\n";
     }
         string filename="results_"+datasetName+"_n"+to_string(v.size())+"_"+runTimestamp+".csv";
         ofstream fout(filename);
-        fout<<"Algorithm,Time_ms,Readable_time,RAM_bytes,RAM_KB,RAM_MB\n";
+        fout<<"Algoritm,Timp_ns,Timp_ms,Timp_uman,RAM_bytes,RAM_KB,RAM_MB\n";
     for(const auto& res : results)
     {
          fout<<res.name<< ","
-         <<res.ms<<","
-            <<formatDuration(res.ms)<<"," 
-            <<res.memory_bytes<<"," 
-            <<res.memory_bytes/1024<<"," 
+         <<res.time_ns<<","
+         <<res.time_ms<<","
+            <<formatPrecise(res.time_ns)<<","
+            <<res.memory_bytes<<","
+            <<res.memory_bytes/1024<<","
             <<res.memory_bytes/(1024*1024)
             <<"\n";
     }
     fout.close();
-        cout<<"\nDataset type: "<<datasetName<<"\n";
-        cout<<"Results saved in "<<filename<<"\n";
+        cout<<"\nTipul setului de date: "<<datasetName<<"\n";
+        cout<<"Rezultatele au fost salvate in "<<filename<<"\n";
         cout<<"Apasati Enter pentru a inchide programul..."<<endl;
     cin.ignore();
     cin.get();

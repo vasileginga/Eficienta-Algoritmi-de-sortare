@@ -17,7 +17,6 @@ Scopul proiectului este evaluarea performanței acestora în funcție de:
 - `averages.csv` — rezultatele medii obținute în urma testelor;
 - `results_*.csv` — rezultate brute pentru fiecare rulare;
 - `generated_list_*.txt` — seturi de date generate;
-- `main.tex` — documentația LaTeX a proiectului;
 - `Analiza_algoritmi_de_sortare.pdf` — lucrarea finală cu grafice și interpretări;
 
 ---

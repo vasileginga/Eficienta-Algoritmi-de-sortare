@@ -1,0 +1,7 @@
+Algoritm,Timp_ns,Timp_ms,Timp_uman,RAM_bytes,RAM_KB,RAM_MB
+HeapSort,2132300,2,2.132 ms,118784,116,0
+QuickSort,3136700,3,3.137 ms,65536,64,0
+MergeSort,7947600,7,7.948 ms,212992,208,0
+InsertionSort,293665500,293,293.666 ms,0,0,0
+SelectionSort,582189200,582,582.189 ms,4096,4,0
+BubbleSort,7164499000,7164,7.164 s,0,0,0

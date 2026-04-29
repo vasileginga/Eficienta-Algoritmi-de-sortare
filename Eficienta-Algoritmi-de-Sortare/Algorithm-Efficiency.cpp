@@ -12,6 +12,9 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <filesystem>
+#include <map>
+#include <tuple>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -23,6 +26,7 @@ void selectionSort(vector<int>&v);
 void insertionSort(vector<int>&v);
 void merge(vector<int>&v,int l,int m,int r);
 void mergeSort(vector<int>&v,int l,int r);
+int medianOfThree(const vector<int>&v, int low, int high);
 void quickSort(vector<int>&v,int low,int high);
 void heapSort(vector<int>&v);
 void heap(vector<int>&v,int n,int i);
@@ -35,6 +39,7 @@ void generateFewUniqueArray(vector<int>&v,int n);
 string getCurrentTime();
 string getFilenameTimestamp();
 size_t getCurrentRAM();
+void computeAverages();
 struct Result {
     string name;
     long long time_ns;
@@ -108,14 +113,14 @@ void monitor(string name, function<void()> func)
         {
             {
             lock_guard<mutex> lock(mtx);
-            cout<<"[Running] "<<name<<" at ["<<getCurrentTime()<<"]\n";
+            cout<<"[Ruleaza] "<<name<<" la ["<<getCurrentTime()<<"]\n";
             }
             this_thread::sleep_for(chrono::seconds(5));
         }
     });
     {
         lock_guard<mutex> lock(mtx);
-        cout<<"[Started] "<<name<<" at ["<<getCurrentTime()<<"]\n";
+        cout<<"[Pornit] "<<name<<" la ["<<getCurrentTime()<<"]\n";
     }
     size_t mem_before=getCurrentRAM();
     auto start=chrono::high_resolution_clock::now();
@@ -133,7 +138,7 @@ void monitor(string name, function<void()> func)
     {
         lock_guard<mutex> lock(mtx);
         results.push_back({name, ns, ms, mem_used});
-        cout<<"[Finished] "<<name<<" at ["<<getCurrentTime()<<"] took "<<formatPrecise(ns)<<" | RAM +"<<mem_used/1024<<" KB\n";
+        cout<<"[Finalizat] "<<name<<" la ["<<getCurrentTime()<<"] a durat "<<formatPrecise(ns)<<" | RAM +"<<mem_used/1024<<" KB\n";
     }
 }
 void selectionSort(vector<int>&v) 
@@ -227,25 +232,74 @@ void mergeSort(vector<int>&v,int l,int r)
         mergeSort(v,m+1,r);
         merge(v,l,m,r);
     }
-}    
+}
+int medianOfThree(const vector<int>&v, int low, int high)
+{
+    int mid = low + (high - low) / 2;
+    int a = v[low], b = v[mid], c = v[high];
+    
+    if((a <= b && b <= c) || (c <= b && b <= a))
+        return b;
+    else if((b <= a && a <= c) || (c <= a && a <= b))
+        return a;
+    else
+        return c;
+}
 void quickSort(vector<int>&v,int low,int high) 
 {
-    if(low<high) 
+    while(low<high) 
     {
-        int pivot=v[high];
-        int i=low-1;
-        for(int j=low;j<high;j++) 
+        if(high - low < 16)
         {
-            if(v[j]<pivot) 
+            for(int i = low + 1; i <= high; i++)
+            {
+                int key = v[i];
+                int j = i - 1;
+                while(j >= low && v[j] > key)
+                {
+                    v[j + 1] = v[j];
+                    j--;
+                }
+                v[j + 1] = key;
+            }
+            return;
+        }
+        
+        int pivot = medianOfThree(v, low, high);
+        
+        int lt=low;
+        int i=low;
+        int gt=high;
+        
+        while(i<=gt) 
+        {
+            if(v[i]<pivot) 
+            {
+                swap(v[i],v[lt]);
+                lt++;
+                i++;
+            }
+            else if(v[i]>pivot) 
+            {
+                swap(v[i],v[gt]);
+                gt--;
+            }
+            else 
             {
                 i++;
-                swap(v[i],v[j]);
             }
         }
-        swap(v[i+1],v[high]);
-        int pi=i+1;
-        quickSort(v,low,pi-1);
-        quickSort(v,pi+1,high);
+        
+        if(lt-low < high-gt)
+        {
+            quickSort(v, low, lt-1);
+            low = gt+1;
+        }
+        else
+        {
+            quickSort(v, gt+1, high);
+            high = lt-1;
+        }
     }
 }   
 void heapSort(vector<int>&v) 
@@ -335,6 +389,168 @@ void generateFewUniqueArray(vector<int>&v,int n)
         v[i]=dis(gen);
     }
 }
+void computeAverages()
+{
+    namespace fs = std::filesystem;
+
+    map<tuple<string,string,int>, vector<double>> timeNsMap;
+    map<tuple<string,string,int>, vector<double>> timeMap;
+    map<tuple<string,string,int>, vector<double>> ramMap;
+
+    for(const auto& entry : fs::directory_iterator(fs::current_path()))
+    {
+        if(!entry.is_regular_file())
+        {
+            continue;
+        }
+
+        const string filename = entry.path().filename().string();
+        const string prefix = "results_";
+        const string suffix = ".csv";
+
+        if(filename.rfind(prefix, 0) != 0)
+        {
+            continue;
+        }
+        if(filename.size() < suffix.size() || filename.substr(filename.size() - suffix.size()) != suffix)
+        {
+            continue;
+        }
+
+        const size_t datasetStart = prefix.size();
+        const size_t nPos = filename.find("_n", datasetStart);
+        if(nPos == string::npos)
+        {
+            continue;
+        }
+
+        const string datasetType = filename.substr(datasetStart, nPos - datasetStart);
+        const size_t sizeStart = nPos + 2;
+        const size_t sizeEnd = filename.find('_', sizeStart);
+        if(sizeEnd == string::npos || sizeEnd <= sizeStart)
+        {
+            continue;
+        }
+
+        int datasetSize = 0;
+        try
+        {
+            datasetSize = stoi(filename.substr(sizeStart, sizeEnd - sizeStart));
+        }
+        catch(...)
+        {
+            continue;
+        }
+
+        ifstream fin(entry.path());
+        if(!fin.is_open())
+        {
+            continue;
+        }
+
+        string line;
+        getline(fin, line);
+
+        while(getline(fin, line))
+        {
+            if(line.empty())
+            {
+                continue;
+            }
+
+            stringstream ss(line);
+            vector<string> fields;
+            string field;
+            while(getline(ss, field, ','))
+            {
+                fields.push_back(field);
+            }
+
+            if(fields.size() < 6)
+            {
+                continue;
+            }
+
+            const string algorithm = fields[0];
+            double timeNs = 0.0;
+            double timeMs = 0.0;
+            double ramKb = 0.0;
+
+            try
+            {
+                if(fields.size() >= 7)
+                {
+                    timeNs = stod(fields[1]);
+                    timeMs = timeNs / 1e6;
+                    ramKb = stod(fields[5]);
+                }
+                else
+                {
+                    timeMs = stod(fields[1]);
+                    timeNs = timeMs * 1e6;
+                    ramKb = stod(fields[4]);
+                }
+            }
+            catch(...)
+            {
+                continue;
+            }
+
+            tuple<string,string,int> key = make_tuple(algorithm, datasetType, datasetSize);
+            timeNsMap[key].push_back(timeNs);
+            timeMap[key].push_back(timeMs);
+            ramMap[key].push_back(ramKb);
+        }
+    }
+
+    ofstream fout("averages.csv");
+    fout << "Algoritm,TipDate,Dimensiune,Timp_mediu_ns,Timp_mediu_ms,RAM_mediu_KB,Esantioane\n";
+
+    for(const auto& entry : timeMap)
+    {
+        const auto& key = entry.first;
+        const auto& timesNs = timeNsMap[key];
+        const auto& times = entry.second;
+        const auto& rams = ramMap[key];
+
+        if(timesNs.empty() || times.empty() || rams.empty())
+        {
+            continue;
+        }
+
+        double sumTimeNs = 0.0;
+        for(double value : timesNs)
+        {
+            sumTimeNs += value;
+        }
+
+        double sumTime = 0.0;
+        for(double value : times)
+        {
+            sumTime += value;
+        }
+
+        double sumRam = 0.0;
+        for(double value : rams)
+        {
+            sumRam += value;
+        }
+
+           const double avgTimeNs = sumTimeNs / static_cast<double>(timesNs.size());
+        const double avgTime = sumTime / static_cast<double>(times.size());
+        const double avgRam = sumRam / static_cast<double>(rams.size());
+
+        fout << get<0>(key) << ","
+             << get<1>(key) << ","
+             << get<2>(key) << ","
+               << fixed << setprecision(6) << avgTimeNs << ","
+             << fixed << setprecision(6) << avgTime << ","
+             << fixed << setprecision(6) << avgRam << ","
+             << times.size() << "\n";
+    }
+
+    cout << "Mediile au fost calculate cu succes si salvate in averages.csv\n";
+}
 int main()
 {
     vector<int> v;
@@ -345,12 +561,21 @@ int main()
     cout<<"Sursa setului de date:\n";
     cout<<"1 - din fisier (data.txt)\n";
     cout<<"2 - generat de program\n";
+    cout<<"3 - Calculeaza mediile din toate fisierele CSV\n";
     cout<<"Alegeti sursa setului de date: \n";
-    while(!(cin>>sursa) || sursa<1 || sursa>2)
+    while(!(cin>>sursa) || sursa<1 || sursa>3)
     {
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        cout<<"Input invalid. Incercati din nou:\n";
+        cout<<"Date invalide. Incercati din nou:\n";
+    }
+    if(sursa==3)
+    {
+        computeAverages();
+        cout<<"Apasati Enter pentru a inchide programul..."<<endl;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cin.get();
+        return 0;
     }
     if(sursa==1)
     {
@@ -386,14 +611,14 @@ int main()
         {
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
-            cout<<"Input invalid. Incercati din nou:\n";
+            cout<<"Date invalide. Incercati din nou:\n";
         }
         cout<<"Introduceti dimensiunea setului de date: \n";
         while(!(cin>>s) || s<=0 || s>10000000)
         {
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
-            cout<<"Input invalid. Incercati din nou:\n";
+            cout<<"Date invalide. Incercati din nou:\n";
         }
         if(tip==1)
         {
@@ -469,7 +694,7 @@ int main()
     }
         string filename="results_"+datasetName+"_n"+to_string(v.size())+"_"+runTimestamp+".csv";
         ofstream fout(filename);
-        fout<<"Algoritm,Timp_ns,Timp_ms,Timp_uman,RAM_bytes,RAM_KB,RAM_MB\n";
+        fout<<"Algoritm,Timp_ns,Timp_ms,Timp_formatat,RAM_bytes,RAM_KB,RAM_MB\n";
     for(const auto& res : results)
     {
          fout<<res.name<< ","
